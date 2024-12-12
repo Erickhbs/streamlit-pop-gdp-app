@@ -1,151 +1,199 @@
+#######################
+# Imports and installations
 import streamlit as st
 import pandas as pd
-import math
-from pathlib import Path
+import plotly.express as px
+import altair as alt
+import requests
+import geopandas as gpd
+import folium
+from folium.plugins import HeatMap
+from streamlit_folium import folium_static
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
 
-# Set the title and favicon that appear in the Browser's tab bar.
+#######################
+# Page configuration
 st.set_page_config(
-    page_title='GDP dashboard',
-    page_icon=':earth_americas:', # This is an emoji shortcode. Could be a URL too.
-)
+    page_title="InfoBrasil",
+    page_icon="icon/brasil.png",
+    layout="wide",
+    initial_sidebar_state="expanded")
 
-# -----------------------------------------------------------------------------
-# Declare some useful functions.
+alt.themes.enable("dark")
 
-@st.cache_data
-def get_gdp_data():
-    """Grab GDP data from a CSV file.
+#######################
+# Loading the CSV
+df = pd.read_csv('data/df.csv')
 
-    This uses caching to avoid having to read the file every time. If we were
-    reading from an HTTP endpoint instead of a file, it's a good idea to set
-    a maximum age to the cache with the TTL argument: @st.cache_data(ttl='1d')
-    """
+#######################
+# Components
 
-    # Instead of a CSV on disk, you could read from an HTTP endpoint here too.
-    DATA_FILENAME = Path(__file__).parent/'data/gdp_data.csv'
-    raw_gdp_df = pd.read_csv(DATA_FILENAME)
+# Organizando a distribuição das colunas para exibir 2 gráficos por linha
+col0 = st.columns(1)
+col1, col2 = st.columns([1, 1])  # Primeira linha de colunas para População e PIB por Região
+col3 = st.columns(1)  # Linha para o PIB por Estado
+col4 = st.columns(1)  # Linha para o gráfico de População por Estado
+col5 = st.columns(1)
 
-    MIN_YEAR = 1960
-    MAX_YEAR = 2022
+# Tamanho padrão dos gráficos
+plot_height = 400
+plot_width = 400
 
-    # The data above has columns like:
-    # - Country Name
-    # - Country Code
-    # - [Stuff I don't care about]
-    # - GDP for 1960
-    # - GDP for 1961
-    # - GDP for 1962
-    # - ...
-    # - GDP for 2022
-    #
-    # ...but I want this instead:
-    # - Country Name
-    # - Country Code
-    # - Year
-    # - GDP
-    #
-    # So let's pivot all those year-columns into two: Year and GDP
-    gdp_df = raw_gdp_df.melt(
-        ['Country Code'],
-        [str(x) for x in range(MIN_YEAR, MAX_YEAR + 1)],
-        'Year',
-        'GDP',
-    )
+#######################
+# Interface
 
-    # Convert years from string to integers
-    gdp_df['Year'] = pd.to_numeric(gdp_df['Year'])
+# Sidebar
+with st.sidebar:
+    st.title('População e PIB do Brasil')
 
-    return gdp_df
+    # Opções de filtro
+    option_list = ['População', 'Riqueza em Milhões']
+    selected_option = st.selectbox('Selecione uma opção', option_list)
+    if selected_option == 'População': 
+        option = 'Population'
+    else: 
+        option = 'GDP'
 
-gdp_df = get_gdp_data()
+#######################
+# Gráficos principais
 
-# -----------------------------------------------------------------------------
-# Draw the actual page
+# Gráfico de População por Região
 
-# Set the title that appears at the top of the page.
-'''
-# :earth_americas: GDP dashboard
+# URL do arquivo ZIP no GitHub
+url = "https://raw.githubusercontent.com/Erickhbs/streamlit-ml-app/main/ne_110m_admin_0_countries.zip"
+output_file = "ne_110m_admin_0_countries.zip"
 
-Browse GDP data from the [World Bank Open Data](https://data.worldbank.org/) website. As you'll
-notice, the data only goes to 2022 right now, and datapoints for certain years are often missing.
-But it's otherwise a great (and did I mention _free_?) source of data.
-'''
+# Baixar o arquivo ZIP
+response = requests.get(url)
+with open(output_file, "wb") as file:
+    file.write(response.content)
 
-# Add some spacing
-''
-''
+# Carregar shapefile diretamente do arquivo ZIP
+brasil = gpd.read_file(f"zip://{output_file}")
 
-min_value = gdp_df['Year'].min()
-max_value = gdp_df['Year'].max()
+# Filtrar apenas o Brasil
+brasil = brasil[brasil['SOVEREIGNT'] == 'Brazil']
 
-from_year, to_year = st.slider(
-    'Which years are you interested in?',
-    min_value=min_value,
-    max_value=max_value,
-    value=[min_value, max_value])
-
-countries = gdp_df['Country Code'].unique()
-
-if not len(countries):
-    st.warning("Select at least one country")
-
-selected_countries = st.multiselect(
-    'Which countries would you like to view?',
-    countries,
-    ['DEU', 'FRA', 'GBR', 'BRA', 'MEX', 'JPN'])
-
-''
-''
-''
-
-# Filter the data
-filtered_gdp_df = gdp_df[
-    (gdp_df['Country Code'].isin(selected_countries))
-    & (gdp_df['Year'] <= to_year)
-    & (from_year <= gdp_df['Year'])
+# Preparar os dados para o HeatMap
+heat_data = [
+    [row['Latitude'], row['Longitude'], row[option]]
+    for _, row in df.iterrows()
 ]
 
-st.header('GDP over time', divider='gray')
 
-''
 
-st.line_chart(
-    filtered_gdp_df,
-    x='Year',
-    y='GDP',
-    color='Country Code',
+# Criar o mapa base centrado no Brasil
+with col0[0]:
+    st.title("INFORMAÇÕES SOBRE O BRASIL: 2019")
+    st.markdown('<style>div.block-container{padding-right:3rem;}</style>', unsafe_allow_html=True)      
+    mapa = folium.Map(location=[-14.2350, -51.9253], zoom_start=3.5)
+
+# Adicionar o HeatMap ao mapa
+HeatMap(heat_data, radius=50, blur=5).add_to(mapa)
+
+# Exibir o mapa
+folium_static(mapa)
+
+# Gráfico de População por Região
+with col1:
+    st.subheader("População por Região")
+    fig = px.pie(
+        df,
+        values="Population",
+        names="Region",
+        title="População por Região",
+        color_discrete_sequence=px.colors.qualitative.Set2
+    )
+    fig.update_traces(textposition='outside', textinfo='percent+label')
+    fig.update_layout(
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        margin=dict(l=100, r=10, t=30, b=10),
+        height=plot_height,
+        width=plot_width
+    )
+    st.plotly_chart(fig, use_container_width=False)
+
+# Gráfico de PIB por Região
+with col2:
+    st.subheader("PIB em Milhões por Região")
+    fig = px.pie(
+        df,
+        values="GDP",
+        names="Region",
+        title="PIB por Região",
+        color_discrete_sequence=px.colors.qualitative.Set2
+    )
+    fig.update_traces(textposition='outside', textinfo='percent+label')
+    fig.update_layout(
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        margin=dict(l=100, r=10, t=30, b=10),
+        height=plot_height,
+        width=plot_width
+    )
+    st.plotly_chart(fig, use_container_width=False)
+
+# Gráfico de PIB por Estado
+# Gráfico de PIB em Milhões por Estado
+col3[0].subheader("PIB em Milhões por Estado")
+
+# Formatando o valor do PIB
+df['formatted_GDP'] = df['GDP'].apply(lambda x: f"{x:,.0f} mi")
+
+fig = px.bar(
+    df,
+    x="State",
+    y="GDP",
+    text="formatted_GDP",
+    template="seaborn",
+    color_discrete_sequence=px.colors.qualitative.Set2
 )
 
-''
-''
+fig.update_traces(textposition='outside')
+
+# Atualizando o layout para formatar o eixo Y com 'mi'
+fig.update_layout(
+    plot_bgcolor='rgba(0,0,0,0)',
+    paper_bgcolor='rgba(0,0,0,0)',
+    margin=dict(l=100, r=10, t=30, b=10),
+    height=plot_height,
+    width=1000,
+    yaxis=dict(
+        tickprefix="R$ ",  # Prefixo para o eixo Y, opcional
+        tickformat=".1s",  # Formatação em "milhões" com o sufixo
+        showticklabels=True  # Mostrar os rótulos de cada valor
+    )
+)
+
+col3[0].plotly_chart(fig, use_container_width=False)
 
 
-first_year = gdp_df[gdp_df['Year'] == from_year]
-last_year = gdp_df[gdp_df['Year'] == to_year]
+# Gráfico de População por Estado
+# Formatando a população para exibir em milhões
+df['formatted_population_mi'] = (df['Population'] / 1e6).apply(lambda x: f"{x:,.2f} mi")
 
-st.header(f'GDP in {to_year}', divider='gray')
+# Gráfico de barras
+fig = px.bar(
+    df, 
+    x="State",
+    y="Population",
+    text="formatted_population_mi",  # Usando a coluna formatada em milhões
+    title="População por Estado",
+    color_discrete_sequence=px.colors.qualitative.Set2
+)
 
-''
+# Atualizando o gráfico
+fig.update_traces(textposition='outside')  # Exibindo texto fora da barra
+fig.update_layout(
+    plot_bgcolor='rgba(0,0,0,0)',
+    paper_bgcolor='rgba(0,0,0,0)',
+    margin=dict(l=100, r=10, t=30, b=10),
+    height=plot_height,
+    width=1000
+)
 
-cols = st.columns(4)
+# Plotando o gráfico
+col4[0].plotly_chart(fig, use_container_width=False)
 
-for i, country in enumerate(selected_countries):
-    col = cols[i % len(cols)]
-
-    with col:
-        first_gdp = first_year[first_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-        last_gdp = last_year[last_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-
-        if math.isnan(first_gdp):
-            growth = 'n/a'
-            delta_color = 'off'
-        else:
-            growth = f'{last_gdp / first_gdp:,.2f}x'
-            delta_color = 'normal'
-
-        st.metric(
-            label=f'{country} GDP',
-            value=f'{last_gdp:,.0f}B',
-            delta=growth,
-            delta_color=delta_color
-        )
