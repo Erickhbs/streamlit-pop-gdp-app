@@ -3,12 +3,10 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import altair as alt
 import requests
 import folium
 from folium.plugins import HeatMap
 from streamlit_folium import folium_static
-import geopandas as gpd
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 
@@ -21,8 +19,6 @@ st.set_page_config(
     page_icon="icon/brasil.png",
     layout="wide",
     initial_sidebar_state="expanded")
-
-alt.themes.enable("dark")
 
 #######################
 # Loading the CSV
@@ -60,8 +56,6 @@ with st.sidebar:
 #######################
 # Gráficos principais
 
-# Gráfico de População por Região
-
 # URL do arquivo ZIP no GitHub
 url = "https://raw.githubusercontent.com/Erickhbs/streamlit-ml-app/main/ne_110m_admin_0_countries.zip"
 output_file = "ne_110m_admin_0_countries.zip"
@@ -71,19 +65,11 @@ response = requests.get(url)
 with open(output_file, "wb") as file:
     file.write(response.content)
 
-# Carregar shapefile diretamente do arquivo ZIP
-brasil = gpd.read_file(f"zip://{output_file}")
-
-# Filtrar apenas o Brasil
-brasil = brasil[brasil['SOVEREIGNT'] == 'Brazil']
-
 # Preparar os dados para o HeatMap
 heat_data = [
     [row['Latitude'], row['Longitude'], row[option]]
     for _, row in df.iterrows()
 ]
-
-
 
 # Criar o mapa base centrado no Brasil
 with col0[0]:
@@ -171,7 +157,6 @@ fig.update_layout(
 
 col3[0].plotly_chart(fig, use_container_width=False)
 
-
 # Gráfico de População por Estado
 # Formatando a população para exibir em milhões
 df['formatted_population_mi'] = (df['Population'] / 1e6).apply(lambda x: f"{x:,.2f} mi")
@@ -198,4 +183,3 @@ fig.update_layout(
 
 # Plotando o gráfico
 col4[0].plotly_chart(fig, use_container_width=False)
-
