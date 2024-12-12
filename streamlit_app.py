@@ -5,12 +5,14 @@ import pandas as pd
 import plotly.express as px
 import altair as alt
 import requests
-import geopandas as gpd
 import folium
 from folium.plugins import HeatMap
 from streamlit_folium import folium_static
+import geopandas as gpd
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
+
+#pip install -r requirements.txt
 
 #######################
 # Page configuration
